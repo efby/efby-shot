@@ -1,6 +1,7 @@
 name: Release DMG firmado y notarizado
 
 on:
+  workflow_call:
   workflow_dispatch:
   push:
     tags:
@@ -10,17 +11,38 @@ permissions:
   contents: read
 
 concurrency:
-  group: efby-shot-release-${{ github.ref }}
+  # Serializa la selección de la siguiente etiqueta cuando se fusionan varios PR.
+  group: efby-shot-release
   cancel-in-progress: false
 
 jobs:
   release:
+    if: github.event_name != 'pull_request' || (github.event.pull_request.merged == true && github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]')
     runs-on: xcode-27
     timeout-minutes: 90
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.merge_commit_sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Seleccionar siguiente versión
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+        id: version
+        run: python3 scripts/release-version.py
+
+      - name: Usar versión de la etiqueta existente
+        if: startsWith(github.ref, 'refs/tags/v')
+        id: tagged-version
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo 'Etiqueta inválida' >&2; exit 1; }
+          echo "MONITORSHOT_APP_VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+          echo "tag=$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
+          echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Verificar Xcode y secretos
         env:
@@ -39,6 +61,16 @@ jobs:
             if [[ -z "${!field}" ]]; then echo "Falta el secreto $field" >&2; exit 1; fi
           done
           [[ "$APPLE_TEAM_ID" == FYU5QTGXLB ]] || { echo 'APPLE_TEAM_ID no corresponde al certificado EFBY.' >&2; exit 1; }
+
+      - name: Probar anotaciones del editor
+        shell: bash
+        run: |
+          set -euo pipefail
+          swiftc -swift-version 6 -target arm64-apple-macos26.0 \
+            -framework AppKit -framework Combine \
+            Presentation/EditorModel.swift Tests/EditorBehavior.swift \
+            -o "$RUNNER_TEMP/editor-behavior"
+          "$RUNNER_TEMP/editor-behavior" "$RUNNER_TEMP/editor-behavior.png"
 
       - name: Preparar certificado Developer ID y perfil de Apple
         env:
@@ -89,19 +121,22 @@ jobs:
           if-no-files-found: error
 
       - name: Publicar GitHub Release
-        if: startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ steps.version.outputs.tag || steps.tagged-version.outputs.tag }}
+          RELEASE_COMMIT: ${{ steps.version.outputs.commit || steps.tagged-version.outputs.commit }}
         shell: bash
         run: |
           set -euo pipefail
-          gh release create "${GITHUB_REF_NAME}" \
+          (cd dist && shasum -a 256 -c MonitorShot-macOS26.dmg.sha256)
+          gh release create "$RELEASE_TAG" \
             dist/MonitorShot-macOS26.dmg \
             dist/MonitorShot-macOS26.dmg.sha256 \
             dist/MonitorShot-macOS26.zip \
-            --title "EFBY Monitor Shot ${GITHUB_REF_NAME}" \
-            --generate-notes
+            --target "$RELEASE_COMMIT" \
+            --title "EFBY Monitor Shot $RELEASE_TAG" \
+            --generate-notes --latest
 
       - name: Borrar credenciales temporales
         if: always()

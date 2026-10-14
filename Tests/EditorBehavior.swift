@@ -20,9 +20,19 @@ struct EditorBehavior {
                              end: CGPoint(x: 500, y: 340), color: .black, text: ""))
         model.add(Annotation(tool: .text, start: CGPoint(x: 70, y: 150),
                              end: CGPoint(x: 70, y: 150), color: .systemRed, text: "Nota aquí"))
-        guard model.annotations.count == 2,
+        model.color = .systemGreen
+        model.addStep(at: CGPoint(x: 120, y: 90))
+        model.addStep(at: CGPoint(x: 260, y: 90))
+        model.color = .systemBlue
+        model.addStep(at: CGPoint(x: 400, y: 90))
+        model.undo()
+        model.addStep(at: CGPoint(x: 400, y: 90))
+        guard model.annotations.count == 5,
+              model.annotations.filter({ $0.tool == .step }).compactMap(\.stepNumber) == [1, 2, 3],
+              model.annotations[2].color == .systemGreen,
+              model.annotations[4].color == .systemBlue,
               model.annotations[0].pixelatedPatch != nil else {
-            fatalError("El pixelado o la anotación no se generaron")
+            fatalError("El pixelado, el color o la numeración no se generaron")
         }
 
         let rendered = model.renderedImage()

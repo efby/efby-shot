@@ -20,7 +20,9 @@ struct EditorView: View {
                 ForEach(MarkupTool.allCases) { tool in
                     Button(tool.rawValue, systemImage: tool.symbol) { model.tool = tool }
                         .buttonStyle(.bordered)
+                        .labelStyle(.iconOnly)
                         .tint(model.tool == tool ? .accentColor : nil)
+                        .help(tool.rawValue)
                 }
                 Divider().frame(height: 24)
                 ForEach(colors, id: \.0) { name, color in
@@ -46,6 +48,11 @@ struct EditorView: View {
                     .foregroundStyle(.secondary)
                 .padding(.horizontal, 12)
                 .padding(.bottom, 8)
+            } else if model.tool == .step {
+                Text("Haz clic en la imagen para colocar los pasos 1, 2, 3…")
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 8)
             }
 
             EditorCanvas(model: model)
