@@ -20,14 +20,16 @@ final class CaptureCoordinator {
     private var settingsDelegate: SettingsWindowDelegate?
 
     func start(_ mode: CaptureMode) {
+        let exportSettings = settings.editorSettings
         Task { @MainActor in
             guard await ScreenCapturePermission.ensureAccessBeforeCapture() else { return }
             do {
                 let image: CGImage
+                let pixelScale: CGFloat
                 switch mode {
                 case .area:
                     guard let rect = await areaSelector.select() else { return }
-                    try await Task.sleep(for: .milliseconds(180))
+                    pixelScale = ScreenCaptureGeometry.scale(for: rect)
                     image = try await capture.captureArea(rect)
                 case .display:
                     let content = try await capture.availableContent()
@@ -35,6 +37,7 @@ final class CaptureCoordinator {
                     let selected = chooseDisplay(content.displays)
                     guard let selected else { return }
                     image = try await capture.captureDisplay(selected)
+                    pixelScale = CGFloat(selected.width) / selected.frame.width
                 case .window:
                     let content = try await capture.availableContent()
                     let windows = content.windows.filter {
@@ -44,8 +47,9 @@ final class CaptureCoordinator {
                     guard !windows.isEmpty else { throw CaptureFailure.noWindow }
                     guard let selected = chooseWindow(windows) else { return }
                     image = try await capture.captureWindow(selected)
+                    pixelScale = ScreenCaptureGeometry.scale(for: selected.frame)
                 }
-                deliver(image)
+                deliver(image, preferences: exportSettings, pixelScale: pixelScale)
             } catch {
                 if ScreenCapturePermission.isPermissionError(error) {
                     let allowed = await ScreenCapturePermission.hasAccess()
@@ -61,13 +65,14 @@ final class CaptureCoordinator {
         }
     }
 
-    private func deliver(_ cgImage: CGImage) {
-        guard let pixels = cgImage.copy() else {
-            showError(CaptureFailure.cannotEncode)
-            return
-        }
-        let image = NSImage(cgImage: pixels, size: NSSize(width: pixels.width, height: pixels.height))
-        showEditor(image, preferences: settings.editorSettings)
+    private func deliver(_ cgImage: CGImage, preferences: CaptureSettings, pixelScale: CGFloat) {
+        let scale = max(pixelScale, 1)
+        let size = NSSize(
+            width: CGFloat(cgImage.width) / scale,
+            height: CGFloat(cgImage.height) / scale
+        )
+        let image = NSImage(cgImage: cgImage, size: size)
+        showEditor(image, preferences: preferences)
     }
 
     private func chooseDisplay(_ displays: [SCDisplay]) -> SCDisplay? {
@@ -98,11 +103,17 @@ final class CaptureCoordinator {
     }
 
     private func showEditor(_ image: NSImage, preferences: CaptureSettings? = nil) {
-        let model = EditorModel(image: image)
         let exportSettings = preferences ?? settings.editorSettings
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1000, height: 700), styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
+        let model = EditorModel(image: image)
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 1000, height: 700),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable],
+            backing: .buffered,
+            defer: true
+        )
         window.isReleasedWhenClosed = false
         window.animationBehavior = .none
+        window.title = "\(AppMetadata.displayName) · Editor"
         let delegate = EditorWindowDelegate { [weak self, weak window] in
             guard let self, let window else { return }
             self.editorSessions.removeAll { $0.window === window }
@@ -113,7 +124,6 @@ final class CaptureCoordinator {
             delegate.hide(window)
         })
         let controller = NSHostingController(rootView: view)
-        window.title = "\(AppMetadata.displayName) · Editor"
         window.contentViewController = controller
         window.center()
         window.makeKeyAndOrderFront(nil)

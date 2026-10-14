@@ -43,8 +43,7 @@ enum PermissionOnboarding {
     }
 
     private static func isGranted() async -> Bool {
-        if CGPreflightScreenCaptureAccess() { return true }
-        return await ScreenCapturePermission.hasAccess()
+        await ScreenCapturePermission.hasAccess()
     }
 
     static func triggerSystemRegistration() async {

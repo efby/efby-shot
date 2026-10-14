@@ -5,15 +5,24 @@ import ScreenCaptureKit
 
 @MainActor
 enum ScreenCapturePermission {
+    /// Evita repetir el probe lento de ScreenCaptureKit en cada captura de la sesión.
+    private static var sessionAccessGranted = false
+
     static var legacyPreflightAccess: Bool { CGPreflightScreenCaptureAccess() }
 
     static func hasAccess() async -> Bool {
-        if CGPreflightScreenCaptureAccess() { return true }
+        if sessionAccessGranted { return true }
+        if CGPreflightScreenCaptureAccess() {
+            sessionAccessGranted = true
+            return true
+        }
         do {
             _ = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
+            sessionAccessGranted = true
             return true
         } catch {
             if isPermissionError(error) { return false }
+            sessionAccessGranted = true
             return true
         }
     }
@@ -21,6 +30,10 @@ enum ScreenCapturePermission {
     /// Registra la app en la base TCC y muestra el diálogo del sistema si hace falta.
     @discardableResult
     static func ensureAccessBeforeCapture() async -> Bool {
+        if sessionAccessGranted || CGPreflightScreenCaptureAccess() {
+            sessionAccessGranted = true
+            return true
+        }
         if await hasAccess() { return true }
         return await PermissionOnboarding.runIfNeeded()
     }

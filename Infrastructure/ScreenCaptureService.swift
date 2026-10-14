@@ -16,7 +16,12 @@ final class ScreenCaptureService: ScreenCapturing {
     }
 
     func captureArea(_ rect: CGRect) async throws -> CGImage {
-        try await SCScreenshotManager.captureImage(in: rect)
+        let captureRect = rect.standardized
+        guard captureRect.width > 1, captureRect.height > 1 else {
+            throw CaptureFailure.invalidSelection
+        }
+        let screenshotRect = ScreenCaptureGeometry.rectForScreenshotCapture(captureRect)
+        return try await SCScreenshotManager.captureImage(in: screenshotRect)
     }
 
     func captureDisplay(_ display: SCDisplay) async throws -> CGImage {
