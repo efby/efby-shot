@@ -5,10 +5,7 @@ final class AreaSelector {
     private var panel: CaptureOverlayPanel?
     private var completion: ((CGRect?) -> Void)?
 
-    func select() async -> CGRect? {
-        let desktop = NSScreen.screens.map(\.frame).reduce(CGRect.null) { $0.union($1) }
-        guard !desktop.isNull else { return nil }
-
+    func select(on screen: NSScreen) async -> CGRect? {
         return await withCheckedContinuation { continuation in
             var didResume = false
             completion = { rect in
@@ -18,7 +15,7 @@ final class AreaSelector {
             }
 
             let overlay = CaptureOverlayPanel(
-                contentRect: desktop,
+                contentRect: screen.frame,
                 styleMask: [.borderless, .nonactivatingPanel, .fullSizeContentView],
                 backing: .buffered,
                 defer: false
@@ -37,11 +34,9 @@ final class AreaSelector {
                     self.finish(nil)
                     return
                 }
-                let scale = ScreenCaptureGeometry.scale(for: screenRect)
-                var aligned = ScreenCaptureGeometry.alignToPixelGrid(screenRect.standardized, scale: scale)
-                if let screen = NSScreen.screens.first(where: { $0.frame.intersects(aligned) }) {
-                    aligned = aligned.intersection(screen.frame)
-                }
+                let aligned = ScreenCaptureGeometry.clippedSelection(
+                    screenRect, to: screen.frame, scale: screen.backingScaleFactor
+                )
                 guard aligned.width > 4, aligned.height > 4 else {
                     self.finish(nil)
                     return
@@ -50,7 +45,7 @@ final class AreaSelector {
             }
 
             overlay.contentView = view
-            overlay.setFrame(desktop, display: true)
+            overlay.setFrame(screen.frame, display: true)
             view.frame = NSRect(origin: .zero, size: overlay.frame.size)
             overlay.makeKeyAndOrderFront(nil)
             panel = overlay
@@ -77,8 +72,8 @@ private final class CaptureOverlayPanel: NSPanel {
 
 @MainActor
 enum ScreenCaptureGeometry {
-    static func scale(for rect: CGRect) -> CGFloat {
-        NSScreen.screens.first(where: { $0.frame.intersects(rect) })?.backingScaleFactor ?? 2
+    static func screen(for displayID: CGDirectDisplayID) -> NSScreen? {
+        NSScreen.screens.first { $0.cgDirectDisplayID == displayID }
     }
 
     static func alignToPixelGrid(_ rect: CGRect, scale: CGFloat) -> CGRect {
@@ -90,14 +85,17 @@ enum ScreenCaptureGeometry {
         return CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)
     }
 
-    /// Selección en coords. Cocoa (`mouseLocation`) → rect para `SCScreenshotManager.captureImage(in:)`.
-    /// ScreenCaptureKit usa origen arriba-izquierda del escritorio virtual; Cocoa usa abajo-izquierda.
-    static func rectForScreenshotCapture(_ cocoaRect: CGRect) -> CGRect {
-        let rect = cocoaRect.standardized
-        let globalMaxY = NSScreen.screens.map(\.frame.maxY).max() ?? rect.maxY
+    static func clippedSelection(_ rect: CGRect, to screenFrame: CGRect, scale: CGFloat) -> CGRect {
+        alignToPixelGrid(rect.standardized, scale: scale).intersection(screenFrame)
+    }
+
+    /// Cocoa usa origen abajo-izquierda; ScreenCaptureKit espera un rect local al monitor
+    /// con origen arriba-izquierda cuando se captura con un filtro de display.
+    static func sourceRect(for cocoaRect: CGRect, on screenFrame: CGRect) -> CGRect {
+        let rect = cocoaRect.standardized.intersection(screenFrame)
         return CGRect(
-            x: rect.minX,
-            y: globalMaxY - rect.maxY,
+            x: rect.minX - screenFrame.minX,
+            y: screenFrame.maxY - rect.maxY,
             width: rect.width,
             height: rect.height
         )

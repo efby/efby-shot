@@ -5,6 +5,12 @@
 - La compilación local usa la firma Developer ID de EFBY cuando está disponible, igual que el release. Así macOS puede reconocer la app después de recompilarla y conservar su permiso de pantalla.
 - **Permiso de captura…** solicita primero el permiso con el diálogo nativo y explica cuándo Ajustes del Sistema exige un administrador.
 
+## Sin publicar — selección de varios monitores
+
+- Área, ventana y monitor permiten elegir la pantalla por nombre y posición cuando hay más de una.
+- El área se selecciona sobre la pantalla elegida y se captura con un filtro propio de ese monitor; las ventanas se filtran por la pantalla seleccionada.
+- El tamaño del editor se calcula desde la imagen obtenida, incluso si las pantallas tienen escalas distintas.
+
 ## 0.3.0 — pasos numerados y release por PR fusionado
 
 - El editor coloca marcadores circulares 1, 2, 3… con el color seleccionado, permite deshacer y conserva los marcadores en el PNG exportado.

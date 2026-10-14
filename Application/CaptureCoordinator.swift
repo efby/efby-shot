@@ -28,26 +28,39 @@ final class CaptureCoordinator {
                 let pixelScale: CGFloat
                 switch mode {
                 case .area:
-                    guard let rect = await areaSelector.select() else { return }
-                    pixelScale = ScreenCaptureGeometry.scale(for: rect)
-                    image = try await capture.captureArea(rect)
+                    let content = try await capture.availableContent()
+                    guard !content.displays.isEmpty else { throw CaptureFailure.noDisplay }
+                    guard let display = chooseDisplay(content.displays, for: mode) else { return }
+                    guard let screen = ScreenCaptureGeometry.screen(for: display.displayID) else {
+                        throw CaptureFailure.noDisplay
+                    }
+                    guard let rect = await areaSelector.select(on: screen) else { return }
+                    image = try await capture.captureArea(
+                        rect, on: display, screenFrame: screen.frame, scale: screen.backingScaleFactor
+                    )
+                    pixelScale = CGFloat(image.width) / rect.width
                 case .display:
                     let content = try await capture.availableContent()
                     guard !content.displays.isEmpty else { throw CaptureFailure.noDisplay }
-                    let selected = chooseDisplay(content.displays)
+                    let selected = chooseDisplay(content.displays, for: mode)
                     guard let selected else { return }
-                    image = try await capture.captureDisplay(selected)
-                    pixelScale = CGFloat(selected.width) / selected.frame.width
+                    let scale = ScreenCaptureGeometry.screen(for: selected.displayID)?.backingScaleFactor ?? 1
+                    image = try await capture.captureDisplay(selected, scale: scale)
+                    pixelScale = CGFloat(image.width) / selected.frame.width
                 case .window:
                     let content = try await capture.availableContent()
+                    guard !content.displays.isEmpty else { throw CaptureFailure.noDisplay }
+                    guard let display = chooseDisplay(content.displays, for: mode) else { return }
                     let windows = content.windows.filter {
                         $0.owningApplication?.bundleIdentifier != Bundle.main.bundleIdentifier
                             && $0.frame.width >= 40 && $0.frame.height >= 40
+                            && $0.frame.intersects(display.frame)
                     }
                     guard !windows.isEmpty else { throw CaptureFailure.noWindow }
                     guard let selected = chooseWindow(windows) else { return }
-                    image = try await capture.captureWindow(selected)
-                    pixelScale = ScreenCaptureGeometry.scale(for: selected.frame)
+                    let scale = ScreenCaptureGeometry.screen(for: display.displayID)?.backingScaleFactor ?? 1
+                    image = try await capture.captureWindow(selected, scale: scale)
+                    pixelScale = CGFloat(image.width) / selected.frame.width
                 }
                 deliver(image, preferences: exportSettings, pixelScale: pixelScale)
             } catch {
@@ -75,18 +88,37 @@ final class CaptureCoordinator {
         showEditor(image, preferences: preferences)
     }
 
-    private func chooseDisplay(_ displays: [SCDisplay]) -> SCDisplay? {
+    private func chooseDisplay(_ displays: [SCDisplay], for mode: CaptureMode) -> SCDisplay? {
         if displays.count == 1 { return displays[0] }
         let alert = NSAlert()
         alert.messageText = "Elegir monitor"
+        alert.informativeText = "Selecciona el monitor para capturar \(mode.rawValue.lowercased())."
         alert.addButton(withTitle: "Capturar")
         alert.addButton(withTitle: "Cancelar")
-        let picker = NSPopUpButton(frame: NSRect(x: 0, y: 0, width: 280, height: 28))
+        let picker = NSPopUpButton(frame: NSRect(x: 0, y: 0, width: 480, height: 28))
         for (index, display) in displays.enumerated() {
-            picker.addItem(withTitle: "Monitor \(index + 1) · \(display.width) × \(display.height)")
+            picker.addItem(withTitle: displayTitle(display, number: index + 1))
         }
         alert.accessoryView = picker
         return alert.runModal() == .alertFirstButtonReturn ? displays[picker.indexOfSelectedItem] : nil
+    }
+
+    private func displayTitle(_ display: SCDisplay, number: Int) -> String {
+        guard let screen = ScreenCaptureGeometry.screen(for: display.displayID) else {
+            return "Monitor \(number) · \(display.width) × \(display.height) · ID \(display.displayID)"
+        }
+        let position: String
+        if let main = NSScreen.screens.first, screen.cgDirectDisplayID == main.cgDirectDisplayID {
+            position = "Principal"
+        } else if let main = NSScreen.screens.first {
+            let dx = screen.frame.midX - main.frame.midX
+            let dy = screen.frame.midY - main.frame.midY
+            position = abs(dx) >= abs(dy) ? (dx < 0 ? "Izquierda" : "Derecha")
+                : (dy < 0 ? "Abajo" : "Arriba")
+        } else {
+            position = "Externo"
+        }
+        return "Monitor \(number) · \(screen.localizedName) · \(position) · \(display.width) × \(display.height)"
     }
 
     private func chooseWindow(_ windows: [SCWindow]) -> SCWindow? {
