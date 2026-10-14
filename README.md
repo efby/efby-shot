@@ -43,6 +43,24 @@ Solo compilar y firmar sin enviar a Apple: `zsh release.sh --skip-notarize`. Est
 
 Variables opcionales: `MONITORSHOT_SIGN_IDENTITY`, `MONITORSHOT_NOTARY_PROFILE`.
 
+### Release automático en GitHub
+
+El workflow [`.github/workflows/release.yml`](.github/workflows/release.yml) usa el mismo certificado Developer ID y los mismos nombres de secretos que EFBY Git Desk. En **Settings → Secrets and variables → Actions** del repositorio `efby/efby-shot` deben estar disponibles:
+
+| Secreto | Contenido |
+| --- | --- |
+| `MACOS_CERTIFICATE_P12_BASE64` | Certificado Developer ID Application de EFBY con su clave privada, exportado como `.p12` y codificado en base64 sin saltos de línea. |
+| `MACOS_CERTIFICATE_PASSWORD` | Contraseña de exportación del `.p12`. |
+| `APPLE_ID` | Apple ID autorizado para notarizar con el equipo EFBY. |
+| `APPLE_APP_SPECIFIC_PASSWORD` | Contraseña específica de app de ese Apple ID para `notarytool`. |
+| `APPLE_TEAM_ID` | `FYU5QTGXLB`. |
+
+Los secretos pueden ser del repositorio o de la organización si `efby/efby-shot` tiene acceso a ellos. No se guardan en el código. El workflow importa el certificado en un llavero temporal, compila con Xcode 27, firma la aplicación, pide a Apple la notarización de la app y del DMG, grapa los tickets y verifica el contenido del DMG. Al terminar elimina el llavero temporal.
+
+Para probarlo sin publicar una versión, abre **Actions → Release DMG firmado y notarizado → Run workflow** en la rama `main`. El DMG, su archivo `.sha256`, el ZIP y los resultados de Apple quedan como artefactos del run. Para publicar una versión, envía un tag `v*` (por ejemplo `v0.2.0`); si el proceso termina correctamente, el workflow crea un GitHub Release con el DMG y el ZIP. Verifica antes que el tag coincida con `CFBundleShortVersionString` en `Resources/Info.plist`.
+
+La firma y la notarización dependen de los secretos y del servicio de Apple. Hasta que el primer run termine con estado correcto y se descargue el DMG final, esta configuración no acredita una distribución notarizada.
+
 Identificador de paquete: `com.efby.monitorshot` (misma taxonomía que `com.efby.EfbyGitDesk`, `com.efby.meetrecorder`, etc.).
 
 ## Estructura

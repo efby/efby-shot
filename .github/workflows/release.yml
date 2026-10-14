@@ -1,0 +1,111 @@
+name: Release DMG firmado y notarizado
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: efby-shot-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: xcode-27
+    timeout-minutes: 90
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Verificar Xcode y secretos
+        env:
+          MACOS_CERTIFICATE_P12_BASE64: ${{ secrets.MACOS_CERTIFICATE_P12_BASE64 }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild -version
+          swift --version
+          swift --version | python3 -c 'import re,sys; match=re.search(r"Swift version (\d+)\.(\d+)",sys.stdin.read()); assert match and tuple(map(int,match.groups())) >= (6,2), "Swift 6.2+ requerido"'
+          for field in MACOS_CERTIFICATE_P12_BASE64 MACOS_CERTIFICATE_PASSWORD APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID; do
+            if [[ -z "${!field}" ]]; then echo "Falta el secreto $field" >&2; exit 1; fi
+          done
+          [[ "$APPLE_TEAM_ID" == FYU5QTGXLB ]] || { echo 'APPLE_TEAM_ID no corresponde al certificado EFBY.' >&2; exit 1; }
+
+      - name: Preparar certificado Developer ID y perfil de Apple
+        env:
+          MACOS_CERTIFICATE_P12_BASE64: ${{ secrets.MACOS_CERTIFICATE_P12_BASE64 }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          keychain="$RUNNER_TEMP/efby-shot-signing.keychain-db"
+          keychain_password="$(openssl rand -base64 32)"
+          echo "::add-mask::$keychain_password"
+          certificate_dir="$RUNNER_TEMP/efby-shot-certificate"
+          mkdir -m 700 "$certificate_dir"
+          trap 'rm -rf "$certificate_dir"' EXIT
+          printf '%s' "$MACOS_CERTIFICATE_P12_BASE64" | base64 --decode > "$certificate_dir/certificate.p12"
+          security create-keychain -p "$keychain_password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$keychain_password" "$keychain"
+          pkcs12_options=()
+          if [[ "$(openssl version)" == OpenSSL\ 3.* ]]; then pkcs12_options=(-legacy); fi
+          openssl pkcs12 "${pkcs12_options[@]}" -in "$certificate_dir/certificate.p12" -passin env:MACOS_CERTIFICATE_PASSWORD -nodes -out "$certificate_dir/identity.pem"
+          security import "$certificate_dir/identity.pem" -f pemseq -t agg -k "$keychain" -T /usr/bin/codesign
+          rm -rf "$certificate_dir"
+          trap - EXIT
+          security set-key-partition-list -S apple-tool:,apple: -k "$keychain_password" "$keychain" >/dev/null
+          security list-keychains -d user -s "$keychain" "$HOME/Library/Keychains/login.keychain-db"
+          printf '%s\n' "$APPLE_APP_SPECIFIC_PASSWORD" | xcrun notarytool store-credentials efby-shot-ci --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --keychain "$keychain"
+          echo "MONITORSHOT_NOTARY_PROFILE=efby-shot-ci" >> "$GITHUB_ENV"
+          echo "MONITORSHOT_NOTARY_KEYCHAIN=$keychain" >> "$GITHUB_ENV"
+
+      - name: Compilar, firmar, notarizar y verificar DMG
+        run: zsh release.sh
+
+      - name: Guardar DMG notarizado
+        uses: actions/upload-artifact@v4
+        with:
+          name: EFBY-Monitor-Shot-notarized
+          path: |
+            dist/MonitorShot-macOS26.dmg
+            dist/MonitorShot-macOS26.dmg.sha256
+            dist/MonitorShot-macOS26.zip
+            dist/MonitorShot-app-notary.json
+            dist/MonitorShot-dmg-notary.json
+          if-no-files-found: error
+
+      - name: Publicar GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release create "${GITHUB_REF_NAME}" \
+            dist/MonitorShot-macOS26.dmg \
+            dist/MonitorShot-macOS26.dmg.sha256 \
+            dist/MonitorShot-macOS26.zip \
+            --title "EFBY Monitor Shot ${GITHUB_REF_NAME}" \
+            --generate-notes
+
+      - name: Borrar credenciales temporales
+        if: always()
+        shell: bash
+        run: |
+          security delete-keychain "$RUNNER_TEMP/efby-shot-signing.keychain-db" || true
+          rm -rf "$RUNNER_TEMP/efby-shot-certificate"

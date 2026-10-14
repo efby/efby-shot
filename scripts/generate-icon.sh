@@ -5,9 +5,11 @@ PROJECT_DIR="${0:A:h:h}"
 mkdir -p "$PROJECT_DIR/.build/ModuleCache"
 export CLANG_MODULE_CACHE_PATH="$PROJECT_DIR/.build/ModuleCache"
 
-if [[ -f "$PROJECT_DIR/Resources/AppIcon.png" && -f "$PROJECT_DIR/Resources/AppIcon.icns" \
-   && "$PROJECT_DIR/Resources/AppIcon.icns" -nt "$PROJECT_DIR/Resources/Brand/EfbyLogo.ai" \
-   && "$PROJECT_DIR/Resources/AppIcon.icns" -nt "$PROJECT_DIR/Tools/generate_app_icon.swift" ]]; then
+# Both generated assets are versioned. A fresh checkout gives them similar
+# timestamps, so comparing mtimes would needlessly regenerate the icon during
+# every CI release (and can fail on some iconutil versions).
+if [[ "${1:-}" != "--force" && -f "$PROJECT_DIR/Resources/AppIcon.png" \
+   && -f "$PROJECT_DIR/Resources/AppIcon.icns" ]]; then
   exit 0
 fi
 
