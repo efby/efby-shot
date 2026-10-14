@@ -28,7 +28,7 @@ enum CaptureFailure: LocalizedError {
         switch self {
         case .permissionDenied: "Activa \(AppMetadata.displayName) en Ajustes del Sistema > Privacidad y seguridad > Grabación de pantalla y audio del sistema. Si ya está activado, desactívalo y actívalo de nuevo para esta copia de la app, luego sal de la app y ábrela otra vez."
         case .noDisplay: "No hay monitores disponibles para capturar."
-        case .noWindow: "No hay ventanas disponibles para capturar."
+        case .noWindow: "No hay ventanas disponibles en el monitor seleccionado. Prueba otro monitor."
         case .cancelled: "Captura cancelada."
         case .invalidSelection: "Selecciona un área más grande."
         case .cannotEncode: "No se pudo crear el archivo PNG."
