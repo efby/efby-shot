@@ -1,3 +1,6 @@
 .build/
 .DS_Store
 dist/*.app/
+.env
+.env.*
+!.env.example
