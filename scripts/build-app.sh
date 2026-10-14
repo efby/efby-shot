@@ -27,6 +27,11 @@ swiftc -swift-version 6 -O -target arm64-apple-macos26.0 \
   -o "$BUNDLE/Contents/MacOS/$MONITORSHOT_EXECUTABLE_NAME"
 
 cp "$PROJECT_DIR/Resources/Info.plist" "$BUNDLE/Contents/Info.plist"
+if [[ -n "${MONITORSHOT_APP_VERSION:-}" ]]; then
+  [[ "$MONITORSHOT_APP_VERSION" =~ '^[0-9]+\.[0-9]+\.[0-9]+$' ]] || { print 'MONITORSHOT_APP_VERSION debe tener formato X.Y.Z' >&2; exit 1; }
+  /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $MONITORSHOT_APP_VERSION" "$BUNDLE/Contents/Info.plist"
+  /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $MONITORSHOT_APP_VERSION" "$BUNDLE/Contents/Info.plist"
+fi
 cp "$PROJECT_DIR/Resources/AppIcon.icns" "$BUNDLE/Contents/Resources/AppIcon.icns"
 
 if [[ -e "$APP_DIR" ]]; then mv "$APP_DIR" "$STAGING/previous.app"; fi

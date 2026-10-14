@@ -1,0 +1,16 @@
+name: Release al fusionar PR
+
+on:
+  pull_request:
+    branches: [main]
+    types: [closed]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    # Los secretos de firma solo se usan con cambios ya fusionados desde este repositorio.
+    if: github.event.pull_request.merged == true && github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]'
+    uses: ./.github/workflows/release.yml
+    secrets: inherit

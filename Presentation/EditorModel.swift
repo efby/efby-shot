@@ -8,6 +8,7 @@ enum MarkupTool: String, CaseIterable, Identifiable {
     case highlight = "Resaltar"
     case pixelate = "Pixelar"
     case text = "Texto"
+    case step = "Paso"
 
     var id: String { rawValue }
 
@@ -19,6 +20,7 @@ enum MarkupTool: String, CaseIterable, Identifiable {
         case .highlight: "highlighter"
         case .pixelate: "square.grid.3x3.fill"
         case .text: "textformat"
+        case .step: "number.circle.fill"
         }
     }
 }
@@ -29,6 +31,7 @@ struct Annotation {
     let end: CGPoint
     let color: NSColor
     let text: String
+    var stepNumber: Int? = nil
     var pixelatedPatch: NSImage? = nil
 }
 
@@ -51,6 +54,15 @@ final class EditorModel: ObservableObject {
         annotations.append(prepared)
     }
     func undo() { if !annotations.isEmpty { annotations.removeLast() } }
+
+    func addStep(at point: CGPoint) {
+        let number = (annotations.compactMap(\.stepNumber).max() ?? 0) + 1
+        let marginX = min(22, image.size.width / 2)
+        let marginY = min(22, image.size.height / 2)
+        let center = CGPoint(x: min(max(point.x, marginX), image.size.width - marginX),
+                             y: min(max(point.y, marginY), image.size.height - marginY))
+        add(Annotation(tool: .step, start: center, end: center, color: color, text: "", stepNumber: number))
+    }
 
     func renderedImage() -> NSImage {
         let size = image.size
@@ -115,6 +127,35 @@ enum EditorDrawing {
                 .font: NSFont.boldSystemFont(ofSize: max(12, 24 * scale))
             ]
             (annotation.text.isEmpty ? "Nota" : annotation.text).draw(at: a, withAttributes: attributes)
+        case .step:
+            guard let number = annotation.stepNumber else { return }
+            let diameter: CGFloat = 44 * scale
+            let circle = NSBezierPath(ovalIn: NSRect(x: a.x - diameter / 2, y: a.y - diameter / 2,
+                                                     width: diameter, height: diameter))
+            NSGraphicsContext.saveGraphicsState()
+            let shadow = NSShadow()
+            shadow.shadowColor = NSColor.black.withAlphaComponent(0.45)
+            shadow.shadowBlurRadius = 4 * scale
+            shadow.shadowOffset = NSSize(width: 1 * scale, height: -2 * scale)
+            shadow.set()
+            annotation.color.setFill()
+            circle.fill()
+            NSGraphicsContext.restoreGraphicsState()
+            NSColor.black.withAlphaComponent(0.3).setStroke()
+            circle.lineWidth = max(1, scale)
+            circle.stroke()
+
+            let rgb = annotation.color.usingColorSpace(.deviceRGB) ?? annotation.color
+            let brightness = 0.2126 * rgb.redComponent + 0.7152 * rgb.greenComponent + 0.0722 * rgb.blueComponent
+            let foreground: NSColor = brightness > 0.65 ? .black : .white
+            let label = String(number) as NSString
+            let baseFont = NSFont.boldSystemFont(ofSize: 23 * scale)
+            let baseWidth = label.size(withAttributes: [.font: baseFont]).width
+            let font = NSFont.boldSystemFont(ofSize: 23 * scale * min(1, diameter * 0.78 / max(1, baseWidth)))
+            let attributes: [NSAttributedString.Key: Any] = [.foregroundColor: foreground, .font: font]
+            let textSize = label.size(withAttributes: attributes)
+            label.draw(at: CGPoint(x: a.x - textSize.width / 2, y: a.y - textSize.height / 2),
+                       withAttributes: attributes)
         }
     }
 }

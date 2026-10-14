@@ -14,7 +14,7 @@ Abre `dist/EFBY Monitor Shot.app` o cópiala a una carpeta de tu usuario; no hac
 
 Si macOS rechaza una captura o solo muestra el fondo de pantalla, usa **Permiso de captura…**. En Ajustes del Sistema > Privacidad y seguridad > Grabación de pantalla y audio del sistema, activa la misma copia de `EFBY Monitor Shot.app` que ejecutas (botón + si no está en la lista). Sal de la app y ábrela otra vez desde esa carpeta. La captura nativa de macOS tiene su propio permiso y no confirma que EFBY Monitor Shot lo tenga.
 
-En el editor puedes añadir flechas, rectángulos, óvalos y resaltados. Con **Pixelar**, arrastra sobre el texto que quieras ofuscar. Con **Texto**, haz clic en la propia imagen, escribe la nota y pulsa Intro. También puedes deshacer, guardar como PNG o copiar la imagen al portapapeles. **Descartar** cierra la captura sin guardar ni copiar. Si activas destinos en Preferencias, se aplican solamente al pulsar **Finalizar**; elegir Descartar no produce archivos ni cambia el portapapeles. También puedes elegir una carpeta y solicitar que la app arranque al iniciar la sesión.
+En el editor puedes añadir flechas, rectángulos, óvalos y resaltados. Con **Pixelar**, arrastra sobre el texto que quieras ofuscar. Con **Texto**, haz clic en la propia imagen, escribe la nota y pulsa Intro. Con **Paso**, haz clic en cada punto de la imagen para colocar 1, 2, 3…; cada nuevo círculo toma el color seleccionado. **Deshacer** quita el último y reutiliza su número en el siguiente paso. También puedes guardar como PNG o copiar la imagen al portapapeles. **Descartar** cierra la captura sin guardar ni copiar. Si activas destinos en Preferencias, se aplican solamente al pulsar **Finalizar**; elegir Descartar no produce archivos ni cambia el portapapeles. También puedes elegir una carpeta y solicitar que la app arranque al iniciar la sesión.
 
 ## Compilar
 
@@ -57,9 +57,9 @@ El workflow [`.github/workflows/release.yml`](.github/workflows/release.yml) usa
 
 Los secretos pueden ser del repositorio o de la organización si `efby/efby-shot` tiene acceso a ellos. No se guardan en el código. El workflow importa el certificado en un llavero temporal, compila con Xcode 27, firma la aplicación, pide a Apple la notarización de la app y del DMG, grapa los tickets y verifica el contenido del DMG. Al terminar elimina el llavero temporal.
 
-Para probarlo sin publicar una versión, abre **Actions → Release DMG firmado y notarizado → Run workflow** en la rama `main`. El DMG, su archivo `.sha256`, el ZIP y los resultados de Apple quedan como artefactos del run. Para publicar una versión, envía un tag `v*` (por ejemplo `v0.2.0`); si el proceso termina correctamente, el workflow crea un GitHub Release con el DMG y el ZIP. Verifica antes que el tag coincida con `CFBundleShortVersionString` en `Resources/Info.plist`.
+Al fusionar un PR de este repositorio en `main`, GitHub genera automáticamente la siguiente versión desde `Resources/Info.plist` y las etiquetas existentes, compila y notariza el DMG y crea el tag `vX.Y.Z` con un GitHub Release. El primer release de esta función parte de `v0.3.0`; los siguientes incrementan el parche. Los PR abiertos aún no reciben secretos de firma. También puedes ejecutarlo manualmente desde **Actions → Release DMG firmado y notarizado → Run workflow** en `main` para publicar una versión, o enviar un tag `v*` con una versión concreta. El DMG, `.sha256`, ZIP y recibos de Apple quedan como artefactos de la ejecución; el DMG, `.sha256` y ZIP se adjuntan al Release.
 
-La firma y la notarización dependen de los secretos y del servicio de Apple. Hasta que el primer run termine con estado correcto y se descargue el DMG final, esta configuración no acredita una distribución notarizada.
+La firma y la notarización dependen de los secretos y del servicio de Apple. El flujo de firma y notarización se verificó en GitHub Actions el 14 de octubre de 2026; cada nueva versión debe terminar correctamente para considerarse distribuible.
 
 Identificador de paquete: `com.efby.monitorshot` (misma taxonomía que `com.efby.EfbyGitDesk`, `com.efby.meetrecorder`, etc.).
 

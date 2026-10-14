@@ -63,6 +63,13 @@ final class MarkupCanvasView: NSView, NSTextFieldDelegate {
     }
 
     override func mouseDown(with event: NSEvent) {
+        if model.tool == .step {
+            guard let point = imagePoint(event) else { return }
+            commitText()
+            model.addStep(at: point)
+            needsDisplay = true
+            return
+        }
         if model.tool == .text {
             guard let point = imagePoint(event) else { return }
             beginText(at: point)
@@ -74,13 +81,13 @@ final class MarkupCanvasView: NSView, NSTextFieldDelegate {
     }
 
     override func mouseDragged(with event: NSEvent) {
-        guard model.tool != .text else { return }
+        guard model.tool != .text && model.tool != .step else { return }
         dragEnd = imagePoint(event)
         needsDisplay = true
     }
 
     override func mouseUp(with event: NSEvent) {
-        guard model.tool != .text else { return }
+        guard model.tool != .text && model.tool != .step else { return }
         defer { dragStart = nil; dragEnd = nil; needsDisplay = true }
         guard let start = dragStart, let end = imagePoint(event) ?? dragEnd else { return }
         model.add(Annotation(tool: model.tool, start: start, end: end, color: model.color, text: model.text))

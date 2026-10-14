@@ -1,5 +1,10 @@
 # Registro de cambios
 
+## 0.3.0 — pasos numerados y release por PR fusionado
+
+- El editor coloca marcadores circulares 1, 2, 3… con el color seleccionado, permite deshacer y conserva los marcadores en el PNG exportado.
+- Al fusionar un PR de este repositorio en `main`, GitHub compila, firma y notariza un DMG, calcula la siguiente versión y publica un GitHub Release con su etiqueta y suma SHA-256.
+
 ## 14 de octubre de 2026 — revisión de EFbyShot
 
 Cambios observados respecto de la primera versión del repositorio (`092cee3`):
