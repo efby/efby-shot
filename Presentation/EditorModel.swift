@@ -1,5 +1,5 @@
 import AppKit
-import Observation
+import Combine
 
 enum MarkupTool: String, CaseIterable, Identifiable {
     case arrow = "Flecha"
@@ -32,13 +32,13 @@ struct Annotation {
     var pixelatedPatch: NSImage? = nil
 }
 
-@MainActor @Observable
-final class EditorModel {
+@MainActor
+final class EditorModel: ObservableObject {
     let image: NSImage
-    var tool: MarkupTool = .arrow
-    var color: NSColor = .systemRed
-    var text = "Nota"
-    var annotations: [Annotation] = []
+    @Published var tool: MarkupTool = .arrow
+    @Published var color: NSColor = .systemRed
+    @Published var text = "Nota"
+    @Published var annotations: [Annotation] = []
 
     init(image: NSImage) { self.image = image }
 

@@ -31,7 +31,7 @@ struct ImageExporter {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd_HH-mm-ss-SSS"
-        let base = "\(prefix.isEmpty ? "MonitorShot" : prefix)-\(formatter.string(from: Date()))"
+        let base = "\(prefix.isEmpty ? AppMetadata.defaultFilenamePrefix : prefix)-\(formatter.string(from: Date()))"
         var url = directory.appendingPathComponent(base).appendingPathExtension("png")
         var suffix = 2
         while FileManager.default.fileExists(atPath: url.path) {

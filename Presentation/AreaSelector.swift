@@ -7,7 +7,12 @@ final class AreaSelector {
 
     func select() async -> CGRect? {
         await withCheckedContinuation { continuation in
-            completion = { rect in continuation.resume(returning: rect) }
+            var didResume = false
+            completion = { rect in
+                guard !didResume else { return }
+                didResume = true
+                continuation.resume(returning: rect)
+            }
             for screen in NSScreen.screens {
                 let panel = NSPanel(contentRect: screen.frame, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
                 panel.level = .screenSaver

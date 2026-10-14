@@ -26,7 +26,7 @@ enum CaptureFailure: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .permissionDenied: "Para capturar, activa MonitorShot en Ajustes del Sistema > Privacidad y seguridad > Grabación de pantalla y audio del sistema. Después, cierra y vuelve a abrir la app."
+        case .permissionDenied: "Activa \(AppMetadata.displayName) en Ajustes del Sistema > Privacidad y seguridad > Grabación de pantalla y audio del sistema. Si ya está activado, desactívalo y actívalo de nuevo para esta copia de la app, luego sal de la app y ábrela otra vez."
         case .noDisplay: "No hay monitores disponibles para capturar."
         case .noWindow: "No hay ventanas disponibles para capturar."
         case .cancelled: "Captura cancelada."

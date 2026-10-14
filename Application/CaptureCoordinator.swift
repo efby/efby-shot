@@ -8,11 +8,20 @@ final class CaptureCoordinator {
     private let exporter = ImageExporter()
     private let settings = SettingsRepository()
     private let areaSelector = AreaSelector()
-    private var editorWindows: [NSWindow] = []
+    private struct EditorSession {
+        let window: NSWindow
+        let controller: NSHostingController<EditorView>
+        let delegate: EditorWindowDelegate
+    }
+
+    private var editorSessions: [EditorSession] = []
     private var settingsWindow: NSWindow?
+    private var settingsController: NSHostingController<SettingsView>?
+    private var settingsDelegate: SettingsWindowDelegate?
 
     func start(_ mode: CaptureMode) {
-        Task {
+        Task { @MainActor in
+            guard await ScreenCapturePermission.ensureAccessBeforeCapture() else { return }
             do {
                 let image: CGImage
                 switch mode {
@@ -28,16 +37,23 @@ final class CaptureCoordinator {
                     image = try await capture.captureDisplay(selected)
                 case .window:
                     let content = try await capture.availableContent()
-                    let windows = content.windows.filter { $0.title?.isEmpty == false && $0.owningApplication?.bundleIdentifier != Bundle.main.bundleIdentifier }
+                    let windows = content.windows.filter {
+                        $0.owningApplication?.bundleIdentifier != Bundle.main.bundleIdentifier
+                            && $0.frame.width >= 40 && $0.frame.height >= 40
+                    }
                     guard !windows.isEmpty else { throw CaptureFailure.noWindow }
                     guard let selected = chooseWindow(windows) else { return }
                     image = try await capture.captureWindow(selected)
                 }
                 deliver(image)
             } catch {
-                let detail = error.localizedDescription.lowercased()
-                if detail.contains("tcc") || detail.contains("permission") || detail.contains("declined") {
-                    showError(CaptureFailure.permissionDenied)
+                if ScreenCapturePermission.isPermissionError(error) {
+                    let allowed = await ScreenCapturePermission.hasAccess()
+                    if allowed {
+                        showError(error)
+                    } else {
+                        showPermissionDenied()
+                    }
                 } else {
                     showError(error)
                 }
@@ -46,8 +62,12 @@ final class CaptureCoordinator {
     }
 
     private func deliver(_ cgImage: CGImage) {
-        let image = NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height))
-        showEditor(image)
+        guard let pixels = cgImage.copy() else {
+            showError(CaptureFailure.cannotEncode)
+            return
+        }
+        let image = NSImage(cgImage: pixels, size: NSSize(width: pixels.width, height: pixels.height))
+        showEditor(image, preferences: settings.editorSettings)
     }
 
     private func chooseDisplay(_ displays: [SCDisplay]) -> SCDisplay? {
@@ -79,15 +99,26 @@ final class CaptureCoordinator {
 
     private func showEditor(_ image: NSImage, preferences: CaptureSettings? = nil) {
         let model = EditorModel(image: image)
+        let exportSettings = preferences ?? settings.editorSettings
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1000, height: 700), styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
-        let view = EditorView(model: model, exporter: exporter, settings: preferences ?? settings.settings, onClose: { [weak window] in window?.close() })
-        window.title = "MonitorShot · Editor"
-        window.contentView = NSHostingView(rootView: view)
+        window.isReleasedWhenClosed = false
+        window.animationBehavior = .none
+        let delegate = EditorWindowDelegate { [weak self, weak window] in
+            guard let self, let window else { return }
+            self.editorSessions.removeAll { $0.window === window }
+        }
+        window.delegate = delegate
+        let view = EditorView(model: model, exporter: exporter, settings: exportSettings, onClose: { [weak delegate, weak window] in
+            guard let window, let delegate else { return }
+            delegate.hide(window)
+        })
+        let controller = NSHostingController(rootView: view)
+        window.title = "\(AppMetadata.displayName) · Editor"
+        window.contentViewController = controller
         window.center()
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
-        editorWindows.append(window)
-        editorWindows.removeAll { !$0.isVisible }
+        editorSessions.append(EditorSession(window: window, controller: controller, delegate: delegate))
     }
 
     func showDemoEditor() {
@@ -109,14 +140,54 @@ final class CaptureCoordinator {
     }
 
     func showSettings() {
-        if let settingsWindow { settingsWindow.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true); return }
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 620, height: 490), styleMask: [.titled, .closable], backing: .buffered, defer: false)
-        window.title = "Preferencias de MonitorShot"
-        window.contentView = NSHostingView(rootView: SettingsView(repository: settings, onCapture: { [weak self] mode in self?.start(mode) }))
+        if let settingsWindow {
+            settingsWindow.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            return
+        }
+
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 640, height: 520),
+            styleMask: [.titled, .closable, .resizable],
+            backing: .buffered,
+            defer: false
+        )
+        window.title = "Preferencias de \(AppMetadata.displayName)"
+        window.minSize = NSSize(width: 560, height: 480)
+        window.isReleasedWhenClosed = false
+        window.animationBehavior = .none
+        let delegate = SettingsWindowDelegate { [weak window] in
+            window?.orderOut(nil)
+        }
+        window.delegate = delegate
+        settingsDelegate = delegate
+
+        let view = SettingsView(repository: settings, onCapture: { [weak self, weak delegate, weak window] mode in
+            guard let window, let delegate else { return }
+            delegate.hide(window)
+            DispatchQueue.main.async { self?.start(mode) }
+        })
+        let controller = NSHostingController(rootView: view)
+        controller.sizingOptions = [.intrinsicContentSize, .preferredContentSize]
+        window.contentViewController = controller
         window.center()
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
         settingsWindow = window
+        settingsController = controller
+    }
+
+    private func showPermissionDenied() {
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = "Permiso de captura requerido"
+        let base = CaptureFailure.permissionDenied.errorDescription ?? ""
+        alert.informativeText = base + "\n\n" + ScreenCapturePermission.staleGrantHint
+        alert.addButton(withTitle: "Abrir Ajustes del Sistema")
+        alert.addButton(withTitle: "Cerrar")
+        if alert.runModal() == .alertFirstButtonReturn {
+            ScreenCapturePermission.openSystemSettings()
+        }
     }
 
     private func showError(_ error: Error) {

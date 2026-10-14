@@ -1,10 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
-  <key>CFBundleIdentifier</key><string>local.monitorshot.app</string>
-  <key>CFBundleName</key><string>MonitorShot</string>
-  <key>CFBundleDisplayName</key><string>MonitorShot</string>
-  <key>CFBundleExecutable</key><string>MonitorShot</string>
+  <key>CFBundleDevelopmentRegion</key><string>es</string>
+  <key>CFBundleIdentifier</key><string>com.efby.monitorshot</string>
+  <key>CFBundleName</key><string>EFBY Monitor Shot</string>
+  <key>CFBundleDisplayName</key><string>EFBY Monitor Shot</string>
+  <key>CFBundleExecutable</key><string>EFBYMonitorShot</string>
   <key>CFBundleIconFile</key><string>AppIcon</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleVersion</key><string>2</string>
@@ -13,5 +14,5 @@
   <key>LSUIElement</key><true/>
   <key>NSPrincipalClass</key><string>NSApplication</string>
   <key>NSHighResolutionCapable</key><true/>
-  <key>NSScreenCaptureUsageDescription</key><string>MonitorShot necesita capturar las áreas, ventanas y monitores que elijas.</string>
+  <key>NSScreenCaptureUsageDescription</key><string>EFBY Monitor Shot necesita permiso de Grabación de pantalla y audio del sistema para capturar el área, las ventanas o el monitor que elijas. Sin esto no puede tomar capturas.</string>
 </dict></plist>

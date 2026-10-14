@@ -10,6 +10,8 @@ final class MonitorShotApp: NSObject, NSApplicationDelegate {
     private var statusLayoutTimer: Timer?
     private var hotKeys: [EventHotKeyRef?] = []
     private var eventHandler: EventHandlerRef?
+    /// Evita que macOS termine la app al cerrar el editor (última ventana visible).
+    private var persistenceWindow: NSWindow?
 
     static func main() {
         let app = NSApplication.shared
@@ -20,28 +22,30 @@ final class MonitorShotApp: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
+        installPersistenceWindow()
         let spacer = NSStatusBar.system.statusItem(withLength: 1)
         spacer.button?.isEnabled = false
         statusSpacer = spacer
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         let statusIcon = Bundle.main.path(forResource: "AppIcon", ofType: "icns").flatMap(NSImage.init(contentsOfFile:))
-            ?? NSImage(systemSymbolName: "camera.viewfinder", accessibilityDescription: "MonitorShot")
+            ?? NSImage(systemSymbolName: "camera.viewfinder", accessibilityDescription: AppMetadata.displayName)
         statusIcon?.size = NSSize(width: 21, height: 21)
         statusIcon?.isTemplate = false
         item.button?.image = statusIcon
         item.button?.imageScaling = .scaleProportionallyDown
-        item.button?.toolTip = "MonitorShot"
+        item.button?.toolTip = AppMetadata.displayName
         item.isVisible = true
         statusItem = item
         let menu = NSMenu()
-        menu.addItem(withTitle: "Capturar área", action: #selector(captureArea), keyEquivalent: "")
-        menu.addItem(withTitle: "Capturar ventana", action: #selector(captureWindow), keyEquivalent: "")
-        menu.addItem(withTitle: "Capturar monitor", action: #selector(captureDisplay), keyEquivalent: "")
+        menu.addItem(captureMenuItem(title: "Capturar área", action: #selector(captureArea), shortcut: .area))
+        menu.addItem(captureMenuItem(title: "Capturar ventana", action: #selector(captureWindow), shortcut: .window))
+        menu.addItem(captureMenuItem(title: "Capturar monitor", action: #selector(captureDisplay), shortcut: .display))
         menu.addItem(.separator())
+        menu.addItem(withTitle: "Permiso de captura…", action: #selector(configureCapturePermission), keyEquivalent: "")
         menu.addItem(withTitle: "Preferencias…", action: #selector(showSettings), keyEquivalent: "")
         menu.addItem(.separator())
-        menu.addItem(withTitle: "Salir de MonitorShot", action: #selector(quit), keyEquivalent: "")
-        for menuItem in menu.items { menuItem.target = self }
+        menu.addItem(withTitle: "Salir de \(AppMetadata.displayName)", action: #selector(quit), keyEquivalent: "")
+        for menuItem in menu.items where menuItem.target == nil { menuItem.target = self }
         item.menu = menu
         let timer = Timer(timeInterval: 2, target: self, selector: #selector(repositionStatusItem), userInfo: nil, repeats: true)
         RunLoop.main.add(timer, forMode: .common)
@@ -63,7 +67,6 @@ final class MonitorShotApp: NSObject, NSApplicationDelegate {
         } else {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
                 self?.repositionStatusItem()
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in self?.showStatusMenu() }
             }
         }
     }
@@ -98,7 +101,17 @@ final class MonitorShotApp: NSObject, NSApplicationDelegate {
     @objc private func captureWindow() { coordinator.start(.window) }
     @objc private func captureDisplay() { coordinator.start(.display) }
     @objc private func showSettings() { coordinator.showSettings() }
+    @objc private func configureCapturePermission() {
+        Task { await PermissionOnboarding.runIfNeeded() }
+    }
     @objc private func quit() { NSApp.terminate(nil) }
+
+    private func captureMenuItem(title: String, action: Selector, shortcut: CaptureShortcut) -> NSMenuItem {
+        let item = NSMenuItem(title: title, action: action, keyEquivalent: shortcut.keyEquivalent)
+        item.keyEquivalentModifierMask = CaptureShortcut.menuModifierMask
+        item.target = self
+        return item
+    }
 
     private func registerHotKeys() {
         var spec = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
@@ -110,21 +123,59 @@ final class MonitorShotApp: NSObject, NSApplicationDelegate {
             let app = Unmanaged<MonitorShotApp>.fromOpaque(userData).takeUnretainedValue()
             DispatchQueue.main.async {
                 switch identifier.id {
-                case 1: app.captureArea()
-                case 2: app.captureWindow()
-                case 3: app.captureDisplay()
+                case CaptureShortcut.area.hotKeyID: app.captureArea()
+                case CaptureShortcut.window.hotKeyID: app.captureWindow()
+                case CaptureShortcut.display.hotKeyID: app.captureDisplay()
                 default: break
                 }
             }
             return noErr
         }
         InstallEventHandler(GetApplicationEventTarget(), callback, 1, &spec, Unmanaged.passUnretained(self).toOpaque(), &eventHandler)
-        for (id, key) in [(UInt32(1), UInt32(kVK_ANSI_1)), (UInt32(2), UInt32(kVK_ANSI_2)), (UInt32(3), UInt32(kVK_ANSI_0))] {
+        for shortcut in CaptureShortcut.allCases {
             var reference: EventHotKeyRef?
-            let hotKeyID = EventHotKeyID(signature: 0x4D534854, id: id)
-            let result = RegisterEventHotKey(key, UInt32(cmdKey | shiftKey), hotKeyID, GetApplicationEventTarget(), 0, &reference)
+            let hotKeyID = EventHotKeyID(signature: 0x4D534854, id: shortcut.hotKeyID)
+            let result = RegisterEventHotKey(
+                shortcut.keyCode,
+                CaptureShortcut.carbonModifierMask,
+                hotKeyID,
+                GetApplicationEventTarget(),
+                0,
+                &reference
+            )
             if result == noErr { hotKeys.append(reference) }
         }
+    }
+
+    private enum CaptureShortcut: CaseIterable {
+        case area, window, display
+
+        var hotKeyID: UInt32 {
+            switch self {
+            case .area: 1
+            case .window: 2
+            case .display: 3
+            }
+        }
+
+        var keyCode: UInt32 {
+            switch self {
+            case .area: UInt32(kVK_ANSI_1)
+            case .window: UInt32(kVK_ANSI_2)
+            case .display: UInt32(kVK_ANSI_0)
+            }
+        }
+
+        var keyEquivalent: String {
+            switch self {
+            case .area: "1"
+            case .window: "2"
+            case .display: "0"
+            }
+        }
+
+        static let menuModifierMask: NSEvent.ModifierFlags = [.command, .shift]
+        static let carbonModifierMask = UInt32(cmdKey | shiftKey)
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -135,5 +186,18 @@ final class MonitorShotApp: NSObject, NSApplicationDelegate {
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         false
+    }
+
+    private func installPersistenceWindow() {
+        let window = NSWindow(
+            contentRect: NSRect(x: -20000, y: -20000, width: 1, height: 1),
+            styleMask: .borderless,
+            backing: .buffered,
+            defer: false
+        )
+        window.isReleasedWhenClosed = false
+        window.animationBehavior = .none
+        window.orderOut(nil)
+        persistenceWindow = window
     }
 }

@@ -9,7 +9,7 @@ final class SettingsRepository {
         get {
             let destination = defaults.url(forKey: "destination")
             return CaptureSettings(
-                filenamePrefix: defaults.string(forKey: "prefix") ?? "MonitorShot",
+                filenamePrefix: defaults.string(forKey: "prefix") ?? AppMetadata.defaultFilenamePrefix,
                 copyAutomatically: defaults.bool(forKey: "copyAutomatically"),
                 saveAutomatically: defaults.bool(forKey: "saveAutomatically"),
                 destination: destination,
@@ -22,6 +22,17 @@ final class SettingsRepository {
             defaults.set(newValue.saveAutomatically, forKey: "saveAutomatically")
             defaults.set(newValue.destination, forKey: "destination")
         }
+    }
+
+    /// Ajustes para el editor sin consultar SMAppService (evita llamadas fuera del hilo principal).
+    var editorSettings: CaptureSettings {
+        CaptureSettings(
+            filenamePrefix: defaults.string(forKey: "prefix") ?? AppMetadata.defaultFilenamePrefix,
+            copyAutomatically: defaults.bool(forKey: "copyAutomatically"),
+            saveAutomatically: defaults.bool(forKey: "saveAutomatically"),
+            destination: defaults.url(forKey: "destination"),
+            launchAtLogin: false
+        )
     }
 
     func setLaunchAtLogin(_ enabled: Bool) throws {

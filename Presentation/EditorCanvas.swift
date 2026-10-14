@@ -13,6 +13,7 @@ struct EditorCanvas: NSViewRepresentable {
     }
 }
 
+@MainActor
 final class MarkupCanvasView: NSView, NSTextFieldDelegate {
     private let model: EditorModel
     private var dragStart: CGPoint?

@@ -4,12 +4,13 @@ import SwiftUI
 struct SettingsView: View {
     let repository: SettingsRepository
     let onCapture: (CaptureMode) -> Void
-    @State private var prefix = "MonitorShot"
+    @State private var prefix = AppMetadata.defaultFilenamePrefix
     @State private var copyAutomatically = false
     @State private var saveAutomatically = false
     @State private var destination: URL?
     @State private var launchAtLogin = false
     @State private var errorMessage = ""
+    @State private var isApplyingLoad = false
 
     var body: some View {
         Form {
@@ -22,10 +23,13 @@ struct SettingsView: View {
             }
 
             Section("Sistema") {
-                Toggle("Iniciar MonitorShot al entrar en la cuenta", isOn: $launchAtLogin)
-                    .onChange(of: launchAtLogin) { _, enabled in
+                Toggle("Iniciar \(AppMetadata.displayName) al entrar en la cuenta", isOn: $launchAtLogin)
+                    .onChange(of: launchAtLogin) { oldValue, enabled in
                         do { try repository.setLaunchAtLogin(enabled) }
-                        catch { errorMessage = error.localizedDescription }
+                        catch {
+                            launchAtLogin = oldValue
+                            errorMessage = error.localizedDescription
+                        }
                     }
                 TextField("Prefijo del nombre de archivo", text: $prefix)
             }
@@ -40,7 +44,7 @@ struct SettingsView: View {
                 Toggle("Copiar al portapapeles al finalizar", isOn: $copyAutomatically)
                 Toggle("Guardar en una carpeta al finalizar", isOn: $saveAutomatically)
                 HStack {
-                    Text(destination?.path ?? "Imágenes/MonitorShot")
+                    Text(destination?.path ?? "Imágenes/\(AppMetadata.defaultPicturesFolderName)")
                         .lineLimit(1)
                         .truncationMode(.middle)
                     Spacer()
@@ -55,18 +59,26 @@ struct SettingsView: View {
         .formStyle(.grouped)
         .padding()
         .onAppear(perform: load)
-        .onChange(of: prefix) { _, _ in save() }
-        .onChange(of: copyAutomatically) { _, _ in save() }
-        .onChange(of: saveAutomatically) { _, _ in save() }
+        .onChange(of: prefix) { _, _ in saveIfApplyingLoad() }
+        .onChange(of: copyAutomatically) { _, _ in saveIfApplyingLoad() }
+        .onChange(of: saveAutomatically) { _, _ in saveIfApplyingLoad() }
+        .frame(minWidth: 600, minHeight: 480)
     }
 
     private func load() {
+        isApplyingLoad = true
         let settings = repository.settings
         prefix = settings.filenamePrefix
         copyAutomatically = settings.copyAutomatically
         saveAutomatically = settings.saveAutomatically
         destination = settings.destination
         launchAtLogin = settings.launchAtLogin
+        isApplyingLoad = false
+    }
+
+    private func saveIfApplyingLoad() {
+        guard !isApplyingLoad else { return }
+        save()
     }
 
     private func save() {
@@ -84,8 +96,15 @@ struct SettingsView: View {
         panel.canChooseFiles = false
         panel.canChooseDirectories = true
         panel.allowsMultipleSelection = false
-        if panel.runModal() == .OK {
-            destination = panel.url
+        panel.canCreateDirectories = true
+        if let window = NSApp.keyWindow {
+            panel.beginSheetModal(for: window) { response in
+                guard response == .OK, let url = panel.url else { return }
+                destination = url
+                save()
+            }
+        } else if panel.runModal() == .OK, let url = panel.url {
+            destination = url
             save()
         }
     }

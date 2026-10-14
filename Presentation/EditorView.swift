@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 struct EditorView: View {
-    @Bindable var model: EditorModel
+    @ObservedObject var model: EditorModel
     let exporter: ImageExporter
     let settings: CaptureSettings
     let onClose: () -> Void
@@ -55,8 +55,7 @@ struct EditorView: View {
                 Button("Guardar PNG", systemImage: "square.and.arrow.down") { save() }
                 Button("Copiar imagen", systemImage: "doc.on.doc") {
                     exporter.copy(model.renderedImage())
-                    hasExported = true
-                    message = "Imagen copiada al portapapeles"
+                    onClose()
                 }
                 Spacer()
                 Text(message).foregroundStyle(.secondary)
@@ -67,7 +66,6 @@ struct EditorView: View {
                 Button(hasExported ? "Cerrar" : "Descartar", systemImage: hasExported ? "xmark" : "trash") {
                     onClose()
                 }
-                .keyboardShortcut(.cancelAction)
             }
             .padding(12)
         }
@@ -79,8 +77,7 @@ struct EditorView: View {
             let formatter = DateFormatter()
             formatter.dateFormat = "yyyy-MM-dd_HH-mm-ss"
             if try exporter.saveWithPanel(model.renderedImage(), suggestedName: "\(settings.filenamePrefix)-\(formatter.string(from: Date())).png") {
-                hasExported = true
-                message = "Guardado"
+                onClose()
             }
         } catch {
             message = error.localizedDescription
@@ -91,7 +88,7 @@ struct EditorView: View {
         let image = model.renderedImage()
         do {
             if settings.saveAutomatically {
-                let directory = settings.destination ?? FileManager.default.urls(for: .picturesDirectory, in: .userDomainMask)[0].appendingPathComponent("MonitorShot")
+                let directory = settings.destination ?? FileManager.default.urls(for: .picturesDirectory, in: .userDomainMask)[0].appendingPathComponent(AppMetadata.defaultPicturesFolderName)
                 _ = try exporter.saveAutomatically(image, to: directory, prefix: settings.filenamePrefix)
                 hasExported = true
             }
