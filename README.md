@@ -12,15 +12,15 @@ App nativa de macOS que corre en la cuenta del usuario estándar. No requiere `s
 
 Abre `dist/EFBY Monitor Shot.app` o cópiala a una carpeta de tu usuario; no hace falta instalarla en Aplicaciones. La aplicación despliega su menú en la barra superior al iniciarse o cuando vuelves a abrirla. Después puedes pulsar el icono EFBY Shot para desplegarlo otra vez. El acceso permanece allí incluso cuando cierras el editor o Preferencias. En pantallas con cámara central, la app ajusta el espacio de su icono para colocarlo en una zona visible de la barra; cuando hay lugar junto a los demás iconos, retira esa reserva. Desde el menú puedes capturar un área, una ventana o un monitor y abrir Preferencias. También puedes capturar con ⇧⌘1, ⇧⌘2 y ⇧⌘0, respectivamente. La opción **Salir de MonitorShot** termina el proceso.
 
-Si macOS rechaza una captura o solo muestra el fondo de pantalla, usa **Permiso de captura…**. En Ajustes del Sistema > Privacidad y seguridad > Grabación de pantalla y audio del sistema, activa la misma copia de `EFBY Monitor Shot.app` que ejecutas (botón + si no está en la lista). Sal de la app y ábrela otra vez desde esa carpeta. La captura nativa de macOS tiene su propio permiso y no confirma que EFBY Monitor Shot lo tenga.
+Si macOS rechaza una captura o solo muestra el fondo de pantalla, usa **Permiso de captura…** para solicitar el permiso mediante el diálogo nativo. Si ya lo rechazaste, puedes revisarlo en Ajustes del Sistema > Privacidad y seguridad > Grabación de pantalla y audio del sistema. Activa la misma copia de `EFBY Monitor Shot.app` que ejecutas y vuelve a abrirla desde esa carpeta. Si Ajustes exige credenciales de administrador, es una restricción de macOS para ese equipo; la app no puede cambiarla. La captura nativa de macOS tiene su propio permiso y no confirma que EFBY Monitor Shot lo tenga.
 
 En el editor puedes añadir flechas, rectángulos, óvalos y resaltados. Con **Pixelar**, arrastra sobre el texto que quieras ofuscar. Con **Texto**, haz clic en la propia imagen, escribe la nota y pulsa Intro. Con **Paso**, haz clic en cada punto de la imagen para colocar 1, 2, 3…; cada nuevo círculo toma el color seleccionado. **Deshacer** quita el último y reutiliza su número en el siguiente paso. También puedes guardar como PNG o copiar la imagen al portapapeles. **Descartar** cierra la captura sin guardar ni copiar. Si activas destinos en Preferencias, se aplican solamente al pulsar **Finalizar**; elegir Descartar no produce archivos ni cambia el portapapeles. También puedes elegir una carpeta y solicitar que la app arranque al iniciar la sesión.
 
 ## Compilar
 
-### Desarrollo local (firma ad hoc)
+### Desarrollo local
 
-`zsh build.sh` → `dist/EFBY Monitor Shot.app` con firma `-` para probar en tu Mac. Cada build cambia el hash y puede obligarte a reactivar el permiso de captura en Ajustes.
+`zsh build.sh` → `dist/EFBY Monitor Shot.app`. Si el certificado Developer ID de EFBY está disponible en el llavero del equipo de desarrollo, la compilación local usa esa misma identidad que el release para que macOS reconozca las nuevas versiones como la misma app. Si no está disponible, usa firma ad hoc y avisa que macOS puede volver a pedir el permiso tras cada compilación. El certificado solo se necesita para compilar; la app distribuida corre con una cuenta de usuario estándar y no solicita credenciales.
 
 ### Release EFBY (Developer ID + notarización)
 

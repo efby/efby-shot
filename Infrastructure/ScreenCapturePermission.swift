@@ -27,14 +27,13 @@ enum ScreenCapturePermission {
         }
     }
 
-    /// Registra la app en la base TCC y muestra el diálogo del sistema si hace falta.
+    /// Solicita el permiso nativo antes de iniciar una captura.
     @discardableResult
     static func ensureAccessBeforeCapture() async -> Bool {
         if sessionAccessGranted || CGPreflightScreenCaptureAccess() {
             sessionAccessGranted = true
             return true
         }
-        if await hasAccess() { return true }
         return await PermissionOnboarding.runIfNeeded()
     }
 

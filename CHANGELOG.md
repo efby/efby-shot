@@ -1,5 +1,10 @@
 # Registro de cambios
 
+## Sin publicar — identidad de la app en desarrollo
+
+- La compilación local usa la firma Developer ID de EFBY cuando está disponible, igual que el release. Así macOS puede reconocer la app después de recompilarla y conservar su permiso de pantalla.
+- **Permiso de captura…** solicita primero el permiso con el diálogo nativo y explica cuándo Ajustes del Sistema exige un administrador.
+
 ## 0.3.0 — pasos numerados y release por PR fusionado
 
 - El editor coloca marcadores circulares 1, 2, 3… con el color seleccionado, permite deshacer y conserva los marcadores en el PNG exportado.
