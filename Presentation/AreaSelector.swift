@@ -2,12 +2,12 @@ import AppKit
 
 @MainActor
 final class AreaSelector {
-    private var panel: CaptureOverlayPanel?
+    private var panels: [CaptureOverlayPanel] = []
     private var completion: (((rect: CGRect, displayID: CGDirectDisplayID)?) -> Void)?
 
     func select() async -> (rect: CGRect, displayID: CGDirectDisplayID)? {
-        let desktop = NSScreen.screens.map(\.frame).reduce(CGRect.null) { $0.union($1) }
-        guard !desktop.isNull else { return nil }
+        let screens = NSScreen.screens
+        guard !screens.isEmpty else { return nil }
         return await withCheckedContinuation { (continuation: CheckedContinuation<(rect: CGRect, displayID: CGDirectDisplayID)?, Never>) in
             var didResume = false
             completion = { selection in
@@ -16,50 +16,54 @@ final class AreaSelector {
                 continuation.resume(returning: selection)
             }
 
-            let overlay = CaptureOverlayPanel(
-                contentRect: desktop,
-                styleMask: [.borderless, .nonactivatingPanel, .fullSizeContentView],
-                backing: .buffered,
-                defer: false
-            )
-            overlay.level = .screenSaver
-            overlay.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-            overlay.backgroundColor = .clear
-            overlay.isOpaque = false
-            overlay.hasShadow = false
-
-            let view = SelectionView()
-            view.autoresizingMask = [.width, .height]
-            view.onFinish = { [weak self] screenRect, screen in
-                guard let self else { return }
-                guard let screenRect, let screen, let displayID = screen.cgDirectDisplayID else {
-                    self.finish(nil)
-                    return
-                }
-                let aligned = ScreenCaptureGeometry.clippedSelection(
-                    screenRect, to: screen.frame, scale: screen.backingScaleFactor
+            panels = screens.map { screen in
+                let overlay = CaptureOverlayPanel(
+                    contentRect: screen.frame,
+                    styleMask: [.borderless, .nonactivatingPanel, .fullSizeContentView],
+                    backing: .buffered,
+                    defer: false
                 )
-                guard aligned.width > 4, aligned.height > 4 else {
-                    self.finish(nil)
-                    return
+                overlay.level = .screenSaver
+                overlay.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+                overlay.backgroundColor = .clear
+                overlay.isOpaque = false
+                overlay.hasShadow = false
+
+                let view = SelectionView()
+                view.autoresizingMask = [.width, .height]
+                view.selectionScreen = screen
+                view.onFinish = { [weak self] screenRect in
+                    guard let self else { return }
+                    guard let screenRect, let displayID = screen.cgDirectDisplayID else {
+                        self.finish(nil)
+                        return
+                    }
+                    let aligned = ScreenCaptureGeometry.clippedSelection(
+                        screenRect, to: screen.frame, scale: screen.backingScaleFactor
+                    )
+                    guard aligned.width > 4, aligned.height > 4 else {
+                        self.finish(nil)
+                        return
+                    }
+                    self.finish((aligned, displayID))
                 }
-                self.finish((aligned, displayID))
+
+                overlay.contentView = view
+                overlay.setFrame(screen.frame, display: true)
+                view.frame = NSRect(origin: .zero, size: overlay.frame.size)
+                overlay.orderFrontRegardless()
+                return overlay
             }
 
-            overlay.contentView = view
-            overlay.setFrame(desktop, display: true)
-            view.frame = NSRect(origin: .zero, size: overlay.frame.size)
-            overlay.makeKeyAndOrderFront(nil)
-            panel = overlay
-
             NSApp.activate(ignoringOtherApps: true)
-            overlay.makeKey()
+            let pointer = NSEvent.mouseLocation
+            panels.first { $0.frame.contains(pointer) }?.makeKey()
         }
     }
 
     private func finish(_ selection: (rect: CGRect, displayID: CGDirectDisplayID)?) {
-        panel?.orderOut(nil)
-        panel = nil
+        panels.forEach { $0.orderOut(nil) }
+        panels.removeAll()
         let callback = completion
         completion = nil
         callback?(selection)
@@ -76,10 +80,6 @@ private final class CaptureOverlayPanel: NSPanel {
 enum ScreenCaptureGeometry {
     static func screen(for displayID: CGDirectDisplayID) -> NSScreen? {
         NSScreen.screens.first { $0.cgDirectDisplayID == displayID }
-    }
-
-    static func screenIndex(containing point: CGPoint, frames: [CGRect]) -> Int? {
-        frames.firstIndex { $0.contains(point) }
     }
 
     static func alignToPixelGrid(_ rect: CGRect, scale: CGFloat) -> CGRect {
@@ -116,12 +116,17 @@ enum ScreenCaptureGeometry {
 }
 
 private final class SelectionView: NSView {
-    var onFinish: ((CGRect?, NSScreen?) -> Void)?
+    var onFinish: ((CGRect?) -> Void)?
+    var selectionScreen: NSScreen?
     private var startScreen: CGPoint?
     private var endScreen: CGPoint?
-    private var selectionScreen: NSScreen?
 
     override var acceptsFirstResponder: Bool { true }
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+    override func resetCursorRects() {
+        addCursorRect(bounds, cursor: .crosshair)
+    }
 
     override func draw(_ dirtyRect: NSRect) {
         NSColor.black.withAlphaComponent(0.34).setFill()
@@ -139,11 +144,8 @@ private final class SelectionView: NSView {
     }
 
     override func mouseDown(with event: NSEvent) {
+        guard selectionScreen != nil else { onFinish?(nil); return }
         let point = NSEvent.mouseLocation
-        let screens = NSScreen.screens
-        selectionScreen = ScreenCaptureGeometry.screenIndex(containing: point, frames: screens.map(\.frame))
-            .map { screens[$0] }
-        guard selectionScreen != nil else { onFinish?(nil, nil); return }
         startScreen = point
         endScreen = startScreen
         needsDisplay = true
@@ -156,14 +158,14 @@ private final class SelectionView: NSView {
     }
 
     override func mouseUp(with event: NSEvent) {
-        guard let startScreen, let selectionScreen else { onFinish?(nil, nil); return }
+        guard let startScreen, let selectionScreen else { onFinish?(nil); return }
         let endScreen = ScreenCaptureGeometry.clamp(NSEvent.mouseLocation, to: selectionScreen.frame)
         let rect = normalizedRect(from: startScreen, to: endScreen)
-        onFinish?(rect.width > 4 && rect.height > 4 ? rect : nil, selectionScreen)
+        onFinish?(rect.width > 4 && rect.height > 4 ? rect : nil)
     }
 
     override func keyDown(with event: NSEvent) {
-        if event.keyCode == 53 { onFinish?(nil, nil) }
+        if event.keyCode == 53 { onFinish?(nil) }
     }
 
     private func normalizedRect(from start: CGPoint, to end: CGPoint) -> CGRect {
