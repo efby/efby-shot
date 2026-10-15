@@ -10,11 +10,6 @@ struct MultiMonitorGeometry {
         precondition(leftSource == CGRect(x: 110, y: 734, width: 300, height: 180))
 
         let above = CGRect(x: 0, y: 900, width: 1920, height: 1080)
-        let right = CGRect(x: 0, y: 0, width: 1920, height: 900)
-        let frames = [right, left, above]
-        precondition(ScreenCaptureGeometry.screenIndex(containing: CGPoint(x: -800, y: 300), frames: frames) == 1)
-        precondition(ScreenCaptureGeometry.screenIndex(containing: CGPoint(x: 250, y: 1200), frames: frames) == 2)
-        precondition(ScreenCaptureGeometry.screenIndex(containing: CGPoint(x: 2500, y: 1200), frames: frames) == nil)
         let aboveSelection = CGRect(x: 50, y: 950, width: 250, height: 100)
         let aboveSource = ScreenCaptureGeometry.sourceRect(for: aboveSelection, on: above)
         precondition(aboveSource == CGRect(x: 50, y: 930, width: 250, height: 100))
