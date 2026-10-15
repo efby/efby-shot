@@ -30,15 +30,17 @@ final class CaptureCoordinator {
                 case .area:
                     let content = try await capture.availableContent()
                     guard !content.displays.isEmpty else { throw CaptureFailure.noDisplay }
-                    guard let display = chooseDisplay(content.displays, for: mode) else { return }
-                    guard let screen = ScreenCaptureGeometry.screen(for: display.displayID) else {
+                    guard let selection = await areaSelector.select() else { return }
+                    guard let screen = ScreenCaptureGeometry.screen(for: selection.displayID) else {
                         throw CaptureFailure.noDisplay
                     }
-                    guard let rect = await areaSelector.select(on: screen) else { return }
+                    guard let display = content.displays.first(where: { $0.displayID == screen.cgDirectDisplayID }) else {
+                        throw CaptureFailure.noDisplay
+                    }
                     image = try await capture.captureArea(
-                        rect, on: display, screenFrame: screen.frame, scale: screen.backingScaleFactor
+                        selection.rect, on: display, screenFrame: screen.frame, scale: screen.backingScaleFactor
                     )
-                    pixelScale = CGFloat(image.width) / rect.width
+                    pixelScale = CGFloat(image.width) / selection.rect.width
                 case .display:
                     let content = try await capture.availableContent()
                     guard !content.displays.isEmpty else { throw CaptureFailure.noDisplay }

@@ -3,19 +3,21 @@ import AppKit
 @MainActor
 final class AreaSelector {
     private var panel: CaptureOverlayPanel?
-    private var completion: ((CGRect?) -> Void)?
+    private var completion: (((rect: CGRect, displayID: CGDirectDisplayID)?) -> Void)?
 
-    func select(on screen: NSScreen) async -> CGRect? {
-        return await withCheckedContinuation { continuation in
+    func select() async -> (rect: CGRect, displayID: CGDirectDisplayID)? {
+        let desktop = NSScreen.screens.map(\.frame).reduce(CGRect.null) { $0.union($1) }
+        guard !desktop.isNull else { return nil }
+        return await withCheckedContinuation { (continuation: CheckedContinuation<(rect: CGRect, displayID: CGDirectDisplayID)?, Never>) in
             var didResume = false
-            completion = { rect in
+            completion = { selection in
                 guard !didResume else { return }
                 didResume = true
-                continuation.resume(returning: rect)
+                continuation.resume(returning: selection)
             }
 
             let overlay = CaptureOverlayPanel(
-                contentRect: screen.frame,
+                contentRect: desktop,
                 styleMask: [.borderless, .nonactivatingPanel, .fullSizeContentView],
                 backing: .buffered,
                 defer: false
@@ -28,9 +30,9 @@ final class AreaSelector {
 
             let view = SelectionView()
             view.autoresizingMask = [.width, .height]
-            view.onFinish = { [weak self] screenRect in
+            view.onFinish = { [weak self] screenRect, screen in
                 guard let self else { return }
-                guard let screenRect else {
+                guard let screenRect, let screen, let displayID = screen.cgDirectDisplayID else {
                     self.finish(nil)
                     return
                 }
@@ -41,11 +43,11 @@ final class AreaSelector {
                     self.finish(nil)
                     return
                 }
-                self.finish(aligned)
+                self.finish((aligned, displayID))
             }
 
             overlay.contentView = view
-            overlay.setFrame(screen.frame, display: true)
+            overlay.setFrame(desktop, display: true)
             view.frame = NSRect(origin: .zero, size: overlay.frame.size)
             overlay.makeKeyAndOrderFront(nil)
             panel = overlay
@@ -55,12 +57,12 @@ final class AreaSelector {
         }
     }
 
-    private func finish(_ rect: CGRect?) {
+    private func finish(_ selection: (rect: CGRect, displayID: CGDirectDisplayID)?) {
         panel?.orderOut(nil)
         panel = nil
         let callback = completion
         completion = nil
-        callback?(rect)
+        callback?(selection)
     }
 }
 
@@ -76,6 +78,10 @@ enum ScreenCaptureGeometry {
         NSScreen.screens.first { $0.cgDirectDisplayID == displayID }
     }
 
+    static func screenIndex(containing point: CGPoint, frames: [CGRect]) -> Int? {
+        frames.firstIndex { $0.contains(point) }
+    }
+
     static func alignToPixelGrid(_ rect: CGRect, scale: CGFloat) -> CGRect {
         guard scale > 0 else { return rect.integral }
         let minX = floor(rect.minX * scale) / scale
@@ -87,6 +93,13 @@ enum ScreenCaptureGeometry {
 
     static func clippedSelection(_ rect: CGRect, to screenFrame: CGRect, scale: CGFloat) -> CGRect {
         alignToPixelGrid(rect.standardized, scale: scale).intersection(screenFrame)
+    }
+
+    static func clamp(_ point: CGPoint, to screenFrame: CGRect) -> CGPoint {
+        CGPoint(
+            x: min(max(point.x, screenFrame.minX), screenFrame.maxX),
+            y: min(max(point.y, screenFrame.minY), screenFrame.maxY)
+        )
     }
 
     /// Cocoa usa origen abajo-izquierda; ScreenCaptureKit espera un rect local al monitor
@@ -103,9 +116,10 @@ enum ScreenCaptureGeometry {
 }
 
 private final class SelectionView: NSView {
-    var onFinish: ((CGRect?) -> Void)?
+    var onFinish: ((CGRect?, NSScreen?) -> Void)?
     private var startScreen: CGPoint?
     private var endScreen: CGPoint?
+    private var selectionScreen: NSScreen?
 
     override var acceptsFirstResponder: Bool { true }
 
@@ -125,25 +139,31 @@ private final class SelectionView: NSView {
     }
 
     override func mouseDown(with event: NSEvent) {
-        startScreen = NSEvent.mouseLocation
+        let point = NSEvent.mouseLocation
+        let screens = NSScreen.screens
+        selectionScreen = ScreenCaptureGeometry.screenIndex(containing: point, frames: screens.map(\.frame))
+            .map { screens[$0] }
+        guard selectionScreen != nil else { onFinish?(nil, nil); return }
+        startScreen = point
         endScreen = startScreen
         needsDisplay = true
     }
 
     override func mouseDragged(with event: NSEvent) {
-        endScreen = NSEvent.mouseLocation
+        guard let selectionScreen else { return }
+        endScreen = ScreenCaptureGeometry.clamp(NSEvent.mouseLocation, to: selectionScreen.frame)
         needsDisplay = true
     }
 
     override func mouseUp(with event: NSEvent) {
-        guard let startScreen else { onFinish?(nil); return }
-        let endScreen = NSEvent.mouseLocation
+        guard let startScreen, let selectionScreen else { onFinish?(nil, nil); return }
+        let endScreen = ScreenCaptureGeometry.clamp(NSEvent.mouseLocation, to: selectionScreen.frame)
         let rect = normalizedRect(from: startScreen, to: endScreen)
-        onFinish?(rect.width > 4 && rect.height > 4 ? rect : nil)
+        onFinish?(rect.width > 4 && rect.height > 4 ? rect : nil, selectionScreen)
     }
 
     override func keyDown(with event: NSEvent) {
-        if event.keyCode == 53 { onFinish?(nil) }
+        if event.keyCode == 53 { onFinish?(nil, nil) }
     }
 
     private func normalizedRect(from start: CGPoint, to end: CGPoint) -> CGRect {
