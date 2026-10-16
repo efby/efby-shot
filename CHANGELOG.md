@@ -7,8 +7,8 @@
 
 ## Sin publicar — selección de varios monitores
 
-- Área, ventana y monitor permiten elegir la pantalla por nombre y posición cuando hay más de una.
-- El área se selecciona sobre la pantalla elegida y se captura con un filtro propio de ese monitor; las ventanas se filtran por la pantalla seleccionada.
+- Al capturar un área, la app detecta automáticamente el monitor donde comienza el arrastre y limita allí la selección.
+- Ventana y monitor permiten elegir la pantalla por nombre y posición cuando hay más de una. Las ventanas se filtran por la pantalla seleccionada.
 - El tamaño del editor se calcula desde la imagen obtenida, incluso si las pantallas tienen escalas distintas.
 
 ## 0.3.0 — pasos numerados y release por PR fusionado

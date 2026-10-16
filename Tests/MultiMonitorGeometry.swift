@@ -20,6 +20,11 @@ struct MultiMonitorGeometry {
         precondition(ScreenCaptureGeometry.sourceRect(for: clipped, on: left)
             == CGRect(x: 1180, y: 724, width: 100, height: 200))
 
+        let draggedIntoAnotherScreen = ScreenCaptureGeometry.clamp(CGPoint(x: 200, y: 300), to: left)
+        precondition(draggedIntoAnotherScreen == CGPoint(x: 0, y: 300))
+        let draggedBelowScreen = ScreenCaptureGeometry.clamp(CGPoint(x: 250, y: 100), to: above)
+        precondition(draggedBelowScreen == CGPoint(x: 250, y: 900))
+
         print("Geometría de varios monitores verificada")
     }
 }
